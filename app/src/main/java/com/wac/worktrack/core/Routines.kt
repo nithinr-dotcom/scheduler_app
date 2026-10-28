@@ -6,21 +6,29 @@ import com.wac.worktrack.data.TaskStatus
 import com.wac.worktrack.data.TxnType
 import com.wac.worktrack.health.HealthSync
 import com.wac.worktrack.notify.Notifs
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
 /** Content for the morning and evening notifications, the 9 AM dates check and the monthly money summary. */
 object Routines {
+    private const val HEALTH_TIMEOUT_MILLIS = 3_000L
+
     suspend fun morning(context: Context, today: Long = Day.today()): Notifs.Morning {
         val db = context.db
         val prefs = Prefs(context)
         val tasks = db.tasks().tasksOn(today)
-        val google = runCatching { Calendars.items(context, today, today) }.getOrDefault(emptyList())
+        val google = runCatching { Calendars.items(context, today, today, googleTasks = false) }.getOrDefault(emptyList())
         val first = (
             tasks.filter { it.status == TaskStatus.PENDING && it.timeMinutes != null }.map { it.timeMinutes!! to it.title } +
                 google.filter { it.minutes != null }.map { it.minutes!! to it.title }
             ).minByOrNull { it.first }?.let { (m, title) -> "${timeLabel(m)} $title" }
-        val sleep = if (prefs.healthConnect) runCatching { HealthSync.read(context, today).sleepMinutes }.getOrNull() else null
+        // This runs inside an alarm broadcast's ~10 s budget; leave sleep out rather than be killed.
+        val sleep = if (prefs.healthConnect) {
+            withTimeoutOrNull(HEALTH_TIMEOUT_MILLIS) { runCatching { HealthSync.read(context, today).sleepMinutes }.getOrNull() }
+        } else {
+            null
+        }
         val doses = if (prefs.has(Module.MEDICINE)) db.care().activeMedicinesNow().sumOf { Meds.parseTimes(it.times).size } else 0
         val dates = if (prefs.has(Module.DATES)) {
             ImportantDates.upcoming(db.care().datesNow(), today).filter { it.second == today }.map { ImportantDates.label(it.first, today) }

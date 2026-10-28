@@ -74,6 +74,7 @@ import com.wac.worktrack.ui.StatBox
 import com.wac.worktrack.ui.rememberGoogleItems
 import com.wac.worktrack.ui.rememberRestDays
 import com.wac.worktrack.ui.rememberUndo
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 @Composable
@@ -83,8 +84,12 @@ fun TodayScreen(nav: NavController) {
     val today = LocalToday.current
     val db = context.db
 
-    val tasks by remember(today) { db.tasks().tasksFor(today) }.collectAsStateWithLifecycle(emptyList())
-    val aggs by remember(today) { db.tasks().aggs(today - 400, today) }.collectAsStateWithLifecycle(emptyList())
+    // null until the first query returns, so "nothing here" hints don't flash while loading.
+
+    val tasksOrNull by remember(today) { db.tasks().tasksFor(today) }.collectAsStateWithLifecycle(null)
+
+    val tasks = tasksOrNull.orEmpty()
+    val aggs by remember(today) { db.tasks().aggs(today - 400, today).distinctUntilChanged() }.collectAsStateWithLifecycle(emptyList())
     val habits by remember { db.habits().active() }.collectAsStateWithLifecycle(emptyList())
     // Yesterday too, for "never miss twice".
     val habitLogs by remember(today) { db.habits().logs(today - 1, today) }.collectAsStateWithLifecycle(emptyList())
@@ -199,7 +204,7 @@ fun TodayScreen(nav: NavController) {
                 }
             }
 
-            if (tasks.isEmpty()) {
+            if (tasksOrNull?.isEmpty() == true) {
                 item {
                     Hint("Nothing planned for today yet.")
                     Row(Modifier.padding(horizontal = 16.dp)) {

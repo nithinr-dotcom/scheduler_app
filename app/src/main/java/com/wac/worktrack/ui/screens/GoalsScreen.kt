@@ -74,7 +74,9 @@ fun GoalsScreen(nav: NavController) {
     val scope = rememberCoroutineScope()
     val today = LocalToday.current
     val db = context.db
-    val goals by remember { db.goals().active() }.collectAsStateWithLifecycle(emptyList())
+    // null until the first query returns, so "nothing here" hints don't flash while loading.
+    val goalsOrNull by remember { db.goals().active() }.collectAsStateWithLifecycle(null)
+    val goals = goalsOrNull.orEmpty()
     val savedList by remember { db.finance().savedPerGoal() }.collectAsStateWithLifecycle(emptyList())
     val saved = savedList.associate { it.goalId to it.totalPaise }
     var editing by remember { mutableStateOf<Goal?>(null) }
@@ -92,7 +94,7 @@ fun GoalsScreen(nav: NavController) {
         },
     ) { padding ->
         LazyColumn(contentPadding = padding) {
-            if (goals.isEmpty()) {
+            if (goalsOrNull?.isEmpty() == true) {
                 item {
                     Hint(
                         "Set long-term goals — \"Read 24 books in 2026\" (count) or \"Save ₹1,00,000\" (money). " +

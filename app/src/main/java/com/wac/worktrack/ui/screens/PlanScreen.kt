@@ -75,7 +75,11 @@ fun PlanScreen(nav: NavController) {
     // Make sure a future day's repeating tasks exist so they can be planned ahead.
     LaunchedEffect(day) { DayPlanner.generate(context, day) }
 
-    val tasks by remember(day) { db.tasks().tasksFor(day) }.collectAsStateWithLifecycle(emptyList())
+    // null until the first query returns, so "nothing here" hints don't flash while loading.
+
+    val tasksOrNull by remember(day) { db.tasks().tasksFor(day) }.collectAsStateWithLifecycle(null)
+
+    val tasks = tasksOrNull.orEmpty()
     val previous by remember(day) { db.tasks().tasksFor(day - 1) }.collectAsStateWithLifecycle(emptyList())
     val prevAgg by remember(day) { db.tasks().aggs(day - 1, day - 1) }.collectAsStateWithLifecycle(emptyList())
     val goals by remember { db.goals().active() }.collectAsStateWithLifecycle(emptyList())
@@ -150,7 +154,7 @@ fun PlanScreen(nav: NavController) {
                             Spacer(Modifier.weight(1f))
                             if (carry.isNotEmpty()) {
                                 TextButton(onClick = {
-                                    scope.launch { carry.forEach { DayPlanner.moveTo(context, it, day) } }
+                                    scope.launch { DayPlanner.moveAll(context, carry, day) }
                                 }) { Text("Move all ${carry.size}") }
                             }
                         }
@@ -174,7 +178,7 @@ fun PlanScreen(nav: NavController) {
             val top = tasks.filter { it.isTop3 }
             item {
                 SectionTitle("Top 3 priorities (${top.size}/3)")
-                if (top.isEmpty()) Hint("Tap ☆ on the tasks that matter most. They count double in your score.")
+                if (top.isEmpty() && tasksOrNull != null) Hint("Tap ☆ on the tasks that matter most. They count double in your score.")
             }
             items(top, key = { "top" + it.id }) { t -> TaskRow(t, null, { star(t) }, { editing = t }) }
 
@@ -182,7 +186,7 @@ fun PlanScreen(nav: NavController) {
                 SectionTitle("Tasks for ${Day.label(day, today).lowercase()}") {
                     TextButton(onClick = { nav.navigate("templates") }) { Text("Repeating…") }
                 }
-                if (tasks.isEmpty()) {
+                if (tasksOrNull?.isEmpty() == true) {
                     Hint("No tasks yet. Add one with +, or set up repeating tasks.")
                 } else {
                     val open = tasks.filter { it.status == TaskStatus.PENDING }

@@ -54,7 +54,9 @@ fun InboxScreen(nav: NavController) {
     val undo = rememberUndo()
     val today = LocalToday.current
     val db = context.db
-    val items by remember { db.life().inbox() }.collectAsStateWithLifecycle(emptyList())
+    // null until the first query returns, so "nothing here" hints don't flash while loading.
+    val itemsOrNull by remember { db.life().inbox() }.collectAsStateWithLifecycle(null)
+    val items = itemsOrNull.orEmpty()
     var editing by remember { mutableStateOf<InboxItem?>(null) }
     var scheduling by remember { mutableStateOf<InboxItem?>(null) }
 
@@ -68,7 +70,7 @@ fun InboxScreen(nav: NavController) {
     ) { padding ->
         LazyColumn(contentPadding = padding) {
             item { Hint("Ideas and \"one day\" tasks that don't belong to a date yet. Quick add: start with \"someday…\".") }
-            if (items.isEmpty()) item { Hint("Empty — nice and clear. ✨") }
+            if (itemsOrNull?.isEmpty() == true) item { Hint("Empty — nice and clear. ✨") }
             items(items, key = { it.id }) { i ->
                 Card(onClick = { editing = i }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                     Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp)) {

@@ -42,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -65,7 +66,9 @@ import com.wac.worktrack.ui.Good
 import com.wac.worktrack.ui.Hint
 import com.wac.worktrack.ui.LocalToday
 import com.wac.worktrack.ui.Warn
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val healthLabels = mapOf(
     HealthSource.STEPS to "Steps",
@@ -79,16 +82,38 @@ private val healthDefaults = mapOf(
     HealthSource.EXERCISE_MINUTES to (30 to "min exercise"),
 )
 
+private const val HISTORY_DAYS = 3650L
+
+private data class HabitStats(val done: Set<Long>, val streak: Scores.Streaks, val counts: Map<Long, Int>) {
+    companion object {
+        val EMPTY = HabitStats(emptySet(), Scores.Streaks(0, 0, 0), emptyMap())
+    }
+}
+
 @Composable
 fun HabitsScreen(nav: NavController) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val today = LocalToday.current
     val db = context.db
-    val habits by remember { db.habits().active() }.collectAsStateWithLifecycle(emptyList())
-    val logs by remember(today) { db.habits().logs(today - 730, today) }.collectAsStateWithLifecycle(emptyList())
+    // null until the first query returns, so "nothing here" hints don't flash while loading.
+    val habitsOrNull by remember { db.habits().active() }.collectAsStateWithLifecycle(null)
+    val habits = habitsOrNull.orEmpty()
+    // The same 10-year window as Achievements, so streaks of old habits aren't cut short.
+    val logs by remember(today) { db.habits().logs(today - HISTORY_DAYS, today) }.collectAsStateWithLifecycle(emptyList())
     var editing by remember { mutableStateOf<Habit?>(null) }
-    val rest = com.wac.worktrack.ui.rememberRestDays(today - 3650, today)
+    val rest = com.wac.worktrack.ui.rememberRestDays(today - HISTORY_DAYS, today)
+    // Years of logs: worked out off the main thread, once per change.
+    val stats by produceState(emptyMap<Long, HabitStats>(), habits, logs, rest, today) {
+        value = withContext(Dispatchers.Default) {
+            val byHabit = logs.groupBy { it.habitId }
+            habits.associate { h ->
+                val habitLogs = byHabit[h.id].orEmpty()
+                val done = Habits.doneDays(h, habitLogs)
+                h.id to HabitStats(done, Habits.streak(h, done, today, rest), habitLogs.associate { it.date to it.count })
+            }
+        }
+    }
     var counting by remember { mutableStateOf<Pair<Habit, Long>?>(null) }
 
     Scaffold(
@@ -103,7 +128,7 @@ fun HabitsScreen(nav: NavController) {
         },
     ) { padding ->
         LazyColumn(contentPadding = padding) {
-            if (habits.isEmpty()) {
+            if (habitsOrNull?.isEmpty() == true) {
                 item {
                     Hint(
                         "Track yes/no habits (\"No sugar\") or counts (\"8 glasses of water\", \"20 pages\"). " +
@@ -112,8 +137,7 @@ fun HabitsScreen(nav: NavController) {
                 }
             }
             items(habits, key = { it.id }) { h ->
-                val done = Habits.doneDays(h, logs)
-                val streak = Habits.streak(h, done, today, rest)
+                val (done, streak, counts) = stats[h.id] ?: HabitStats.EMPTY
                 Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clickable { editing = h }) {
                     Column(Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -142,7 +166,7 @@ fun HabitsScreen(nav: NavController) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             for (d in today - 6..today) {
                                 val on = d in done
-                                val count = Habits.countOn(h, logs, d)
+                                val count = counts[d] ?: 0
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
                                         Day.date(d).dayOfWeek.name.take(1), style = MaterialTheme.typography.labelSmall,

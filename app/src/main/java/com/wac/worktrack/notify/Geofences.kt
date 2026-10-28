@@ -41,15 +41,30 @@ object Geofences {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
         )
 
-    /** Re-registers geofences to match the enabled location reminders. */
+    /** Unforced syncs that would register the same fences are skipped for this long. */
+    private const val RESYNC_MILLIS = 60 * 60_000L
+
+    private var lastKey: String? = null
+    private var lastSyncAt = 0L
+
+    /**
+     * Re-registers geofences to match the enabled location reminders. Unless [force], nothing
+     * happens if the same set was registered within [RESYNC_MILLIS].
+     */
     @SuppressLint("MissingPermission")
-    suspend fun sync(context: Context) {
+    suspend fun sync(context: Context, force: Boolean = true) {
+        val granted = hasForeground(context) && hasBackground(context)
+        val places = context.db.life().placesNow().associateBy { it.id }
+        val wanted = context.db.reminders().locationReminders().mapNotNull { r -> places[r.placeId]?.let { r to it } }
+        val key = granted.toString() + wanted.joinToString { (r, p) -> "${r.id}:${p.lat},${p.lng},${p.radiusMeters}" }
+        val now = System.currentTimeMillis()
+        if (!force && key == lastKey && now - lastSyncAt < RESYNC_MILLIS) return
+        lastKey = key
+        lastSyncAt = now
         val client = LocationServices.getGeofencingClient(context)
         runCatching { client.removeGeofences(pending(context)).await() }
-        if (!hasForeground(context) || !hasBackground(context)) return
-        val places = context.db.life().placesNow().associateBy { it.id }
-        val fences = context.db.reminders().locationReminders().mapNotNull { r ->
-            val p = places[r.placeId] ?: return@mapNotNull null
+        if (!granted) return
+        val fences = wanted.map { (r, p) ->
             Geofence.Builder()
                 .setRequestId(PREFIX + r.id)
                 .setCircularRegion(p.lat, p.lng, p.radiusMeters.toFloat())

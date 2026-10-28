@@ -64,7 +64,9 @@ fun DatesScreen(nav: NavController) {
     val today = LocalToday.current
     val undo = rememberUndo()
     val care = context.db.care()
-    val dates by remember { care.dates() }.collectAsStateWithLifecycle(emptyList())
+    // null until the first query returns, so "nothing here" hints don't flash while loading.
+    val datesOrNull by remember { care.dates() }.collectAsStateWithLifecycle(null)
+    val dates = datesOrNull.orEmpty()
     val sorted = remember(dates, today) { dates.sortedBy { ImportantDates.next(it, today) } }
     var editing by remember { mutableStateOf<ImportantDate?>(null) }
 
@@ -79,7 +81,7 @@ fun DatesScreen(nav: NavController) {
     ) { padding ->
         LazyColumn(contentPadding = padding) {
             item { Hint("You'll get a heads-up at 9 AM a few days before each one, so there's time to call, plan or buy a gift.") }
-            if (sorted.isEmpty()) item { Hint("No dates yet. Tap + to add a birthday or anniversary.") }
+            if (datesOrNull?.isEmpty() == true) item { Hint("No dates yet. Tap + to add a birthday or anniversary.") }
             items(sorted, key = { it.id }) { d ->
                 Column(Modifier.fillMaxWidth().clickable { editing = d }.padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Text(

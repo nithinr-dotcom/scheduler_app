@@ -72,7 +72,9 @@ fun NetWorthScreen(nav: NavController) {
     val scope = rememberCoroutineScope()
     val undo = rememberUndo()
     val finance = context.db.finance()
-    val assets by remember { finance.assets() }.collectAsStateWithLifecycle(emptyList())
+    // null until the first query returns, so "nothing here" hints don't flash while loading.
+    val assetsOrNull by remember { finance.assets() }.collectAsStateWithLifecycle(null)
+    val assets = assetsOrNull.orEmpty()
     val debts by remember { finance.debts() }.collectAsStateWithLifecycle(emptyList())
     val history by remember { finance.netWorthHistory() }.collectAsStateWithLifecycle(emptyList())
     var editing by remember { mutableStateOf<Asset?>(null) }
@@ -120,7 +122,7 @@ fun NetWorthScreen(nav: NavController) {
                     NetWorthChart(history)
                 }
             }
-            if (assets.isEmpty()) item { Hint("Add your accounts, investments and loans. Update the values now and then — a point is saved every month.") }
+            if (assetsOrNull?.isEmpty() == true) item { Hint("Add your accounts, investments and loans. Update the values now and then — a point is saved every month.") }
             listOf(false to "What you own", true to "What you owe").forEach { (liability, title) ->
                 val group = assets.filter { it.liability == liability }
                 if (group.isNotEmpty()) {

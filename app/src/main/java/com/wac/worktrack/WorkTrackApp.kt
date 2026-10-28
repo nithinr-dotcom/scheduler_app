@@ -17,12 +17,17 @@ class WorkTrackApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Notifs.createChannels(this)
-        CloudBackup.schedule(this)
         // Ongoing notifications are cleared on reboot/update; the app process starting brings them back.
         Notifs.quickAdd(this)
+        // Alarms, widgets, SMS and the QS tile all start the process, often several times a day, so
+        // only cheap work happens here. Boot, update and the midnight rollover reschedule
+        // everything; this only catches a day the rollover missed.
         scope.launch {
-            DayPlanner.ensure(this@WorkTrackApp)
-            Alarms.rescheduleAll(this@WorkTrackApp)
+            CloudBackup.schedule(this@WorkTrackApp)
+            if (!DayPlanner.planned(this@WorkTrackApp)) {
+                DayPlanner.ensure(this@WorkTrackApp)
+                Alarms.rescheduleAll(this@WorkTrackApp)
+            }
         }
     }
 }

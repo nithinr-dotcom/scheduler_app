@@ -47,20 +47,27 @@ object Day {
         return d.withDayOfMonth(1).toEpochDay()..d.withDayOfMonth(d.lengthOfMonth()).toEpochDay()
     }
 
+    // Built once: these run for every row of most lists.
+    private val LABEL = DateTimeFormatter.ofPattern("EEE, d MMM")
+    private val LONG = DateTimeFormatter.ofPattern("EEEE, d MMMM")
+    private val SHORT = DateTimeFormatter.ofPattern("d MMM")
+
     fun label(day: Long, today: Long = today()): String = when (day - today) {
         0L -> "Today"
         1L -> "Tomorrow"
         -1L -> "Yesterday"
-        else -> date(day).format(DateTimeFormatter.ofPattern("EEE, d MMM"))
+        else -> date(day).format(LABEL)
     }
 
-    fun long(day: Long): String = date(day).format(DateTimeFormatter.ofPattern("EEEE, d MMMM"))
+    fun long(day: Long): String = date(day).format(LONG)
 
-    fun short(day: Long): String = date(day).format(DateTimeFormatter.ofPattern("d MMM"))
+    fun short(day: Long): String = date(day).format(SHORT)
 }
 
+private val TIME = DateTimeFormatter.ofPattern("h:mm a")
+
 fun timeLabel(minutes: Int): String =
-    LocalTime.of(minutes / 60, minutes % 60).format(DateTimeFormatter.ofPattern("h:mm a"))
+    LocalTime.of(minutes / 60, minutes % 60).format(TIME)
 
 fun millisTimeLabel(millis: Long): String = timeLabel(Day.minutesOfMillis(millis))
 

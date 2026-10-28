@@ -74,7 +74,9 @@ fun BillsScreen(nav: NavController) {
     val undo = rememberUndo()
     val today = LocalToday.current
     val finance = context.db.finance()
-    val bills by remember { finance.bills() }.collectAsStateWithLifecycle(emptyList())
+    // null until the first query returns, so "nothing here" hints don't flash while loading.
+    val billsOrNull by remember { finance.bills() }.collectAsStateWithLifecycle(null)
+    val bills = billsOrNull.orEmpty()
     var editing by remember { mutableStateOf<Bill?>(null) }
     var paying by remember { mutableStateOf<Bill?>(null) }
 
@@ -103,7 +105,7 @@ fun BillsScreen(nav: NavController) {
                 }
                 Hint("You'll get a reminder before each due date. \"Mark paid\" adds the expense to Finance.")
             }
-            if (bills.isEmpty()) item { Hint("No bills yet. Add rent, electricity, phone, Netflix…") }
+            if (billsOrNull?.isEmpty() == true) item { Hint("No bills yet. Add rent, electricity, phone, Netflix…") }
             val sorted = active.sortedBy { Bills.nextDue(it, today) } + bills.filter { !it.active }
             items(sorted, key = { it.id }) { b ->
                 val due = Bills.nextDue(b, today)

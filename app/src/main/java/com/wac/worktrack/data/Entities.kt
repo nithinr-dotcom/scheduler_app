@@ -141,7 +141,7 @@ enum class TxnSource { MANUAL, SMS, NOTIFICATION, RECURRING, AUTO_SAVE, BILL }
 @Entity(
     tableName = "transactions",
     // Rejected rows are kept so the same bank reference is never captured twice.
-    indices = [Index(value = ["ref"], unique = true), Index("date"), Index("status")],
+    indices = [Index(value = ["ref"], unique = true), Index("date"), Index("status"), Index("timeMillis")],
 )
 data class Txn(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -330,7 +330,8 @@ data class Medicine(
 )
 
 /** One dose taken: medicine, day and the scheduled time it was for. */
-@Entity(tableName = "med_logs", primaryKeys = ["medId", "date", "minutes"])
+// The key starts with medId, so date-range reads need their own index.
+@Entity(tableName = "med_logs", primaryKeys = ["medId", "date", "minutes"], indices = [Index("date")])
 data class MedLog(
     val medId: Long,
     val date: Long,

@@ -55,7 +55,9 @@ fun JournalScreen(nav: NavController) {
 
     var day by remember { mutableLongStateOf(today) }
     val entry by remember(day) { db.life().journal(day) }.collectAsStateWithLifecycle(null)
-    val all by remember { db.life().journalAll() }.collectAsStateWithLifecycle(emptyList())
+    // null until the first query returns, so "nothing here" hints don't flash while loading.
+    val allOrNull by remember { db.life().journalAll() }.collectAsStateWithLifecycle(null)
+    val all = allOrNull.orEmpty()
     var text by remember(day) { mutableStateOf("") }
     var loaded by remember(day) { mutableStateOf(false) }
     // Typed but not yet saved. Saved a second after typing stops, and when leaving the day or the screen.
@@ -104,7 +106,7 @@ fun JournalScreen(nav: NavController) {
                     Button(onClick = { save() }) { Text("Save") }
                 }
                 SectionTitle("Past entries")
-                if (all.isEmpty()) Hint("Your entries will show up here.")
+                if (allOrNull?.isEmpty() == true) Hint("Your entries will show up here.")
             }
             items(all.filter { it.text.isNotBlank() || it.mood != null }, key = { it.date }) { e ->
                 Column(Modifier.fillMaxWidth().clickable { day = e.date }.padding(horizontal = 16.dp, vertical = 10.dp)) {

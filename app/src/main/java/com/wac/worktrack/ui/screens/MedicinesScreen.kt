@@ -64,7 +64,9 @@ fun MedicinesScreen(nav: NavController) {
     val today = LocalToday.current
     val undo = rememberUndo()
     val care = context.db.care()
-    val meds by remember { care.medicines() }.collectAsStateWithLifecycle(emptyList())
+    // null until the first query returns, so "nothing here" hints don't flash while loading.
+    val medsOrNull by remember { care.medicines() }.collectAsStateWithLifecycle(null)
+    val meds = medsOrNull.orEmpty()
     val logs by remember(today) { care.medLogs(today - 6, today) }.collectAsStateWithLifecycle(emptyList())
     var editing by remember { mutableStateOf<Medicine?>(null) }
 
@@ -78,7 +80,7 @@ fun MedicinesScreen(nav: NavController) {
             item {
                 Hint("You'll get a reminder at each dose time with a \"Taken\" button. Add how many doses you have to get a refill warning.")
             }
-            if (meds.isEmpty()) item { Hint("No medicines yet. Tap + to add one.") }
+            if (medsOrNull?.isEmpty() == true) item { Hint("No medicines yet. Tap + to add one.") }
             items(meds, key = { it.id }) { m ->
                 Card(onClick = { editing = m }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                     Column(Modifier.padding(16.dp)) {

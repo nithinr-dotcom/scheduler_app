@@ -296,7 +296,7 @@ interface FinanceDao {
         """SELECT COUNT(*) FROM transactions WHERE amountPaise = :amount AND type = :type
         AND source IN ('SMS', 'NOTIFICATION') AND source != :source
         AND (:ref IS NULL OR ref IS NULL OR ref = :ref)
-        AND ABS(timeMillis - :at) < :windowMillis"""
+        AND timeMillis > :at - :windowMillis AND timeMillis < :at + :windowMillis"""
     )
     suspend fun similarCaptured(amount: Long, type: TxnType, source: TxnSource, ref: String?, at: Long, windowMillis: Long): Int
 

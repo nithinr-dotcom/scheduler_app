@@ -32,10 +32,11 @@ object Calendars {
         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
 
     /** Everything from [from] to [to] (inclusive epoch days). Call off the main thread. */
-    suspend fun items(context: Context, from: Long, to: Long): List<CalendarItem> {
+    /** [googleTasks] = false skips the network fetch, e.g. when only timed items matter (Google Tasks have no time). */
+    suspend fun items(context: Context, from: Long, to: Long, googleTasks: Boolean = true): List<CalendarItem> {
         val prefs = Prefs(context)
         val events = if (prefs.calendarEnabled && hasPermission(context)) events(context, from, to) else emptyList()
-        val tasks = if (prefs.googleTasksEnabled) GoogleTasks.due(context, from, to) else emptyList()
+        val tasks = if (googleTasks && prefs.googleTasksEnabled) GoogleTasks.due(context, from, to) else emptyList()
         return (tasks + events).sortedWith(compareBy({ it.day }, { it.minutes ?: -1 }))
     }
 

@@ -68,7 +68,9 @@ fun FocusScreen(nav: NavController) {
     val db = context.db
 
     val tasks by remember(today) { db.tasks().tasksFor(today) }.collectAsStateWithLifecycle(emptyList())
-    val sessions by remember(today) { db.life().focus(today - 6, today) }.collectAsStateWithLifecycle(emptyList())
+    // null until the first query returns, so "nothing here" hints don't flash while loading.
+    val sessionsOrNull by remember(today) { db.life().focus(today - 6, today) }.collectAsStateWithLifecycle(null)
+    val sessions = sessionsOrNull.orEmpty()
     var state by remember { mutableStateOf(Focus.state(context)) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var length by remember { mutableIntStateOf(prefs.focusMinutes) }
@@ -157,7 +159,7 @@ fun FocusScreen(nav: NavController) {
                 }
                 Hint("Focus time on a task is added to its \"time spent\", so you can compare it with your estimate.")
                 SectionTitle("Recent sessions")
-                if (sessions.isEmpty()) Hint("No sessions yet.")
+                if (sessionsOrNull?.isEmpty() == true) Hint("No sessions yet.")
             }
             items(sessions, key = { it.id }) { f ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {

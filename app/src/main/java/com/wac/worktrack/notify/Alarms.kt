@@ -119,9 +119,10 @@ object Alarms {
         Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
             context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
 
-    private fun set(context: Context, at: Long, pi: PendingIntent) {
+    /** [exact] = false lets the system shift it a few minutes to batch with other wakeups. */
+    private fun set(context: Context, at: Long, pi: PendingIntent, exact: Boolean = true) {
         val am = context.getSystemService(AlarmManager::class.java)
-        if (exactAllowed(context)) {
+        if (exact && exactAllowed(context)) {
             am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
         } else {
             // Inexact fallback if exact-alarm access was revoked.
@@ -227,7 +228,7 @@ object Alarms {
             val sunday = LocalDate.now().with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY)).toEpochDay()
             var weeklyAt = Day.millisAt(sunday, WEEKLY_MINUTES)
             if (weeklyAt <= System.currentTimeMillis()) weeklyAt = Day.millisAt(sunday + 7, WEEKLY_MINUTES)
-            set(context, weeklyAt, weekly)
+            set(context, weeklyAt, weekly, exact = false)
         } else {
             cancel(context, morning)
             cancel(context, night)
@@ -239,10 +240,11 @@ object Alarms {
         } else {
             cancel(context, windDown)
         }
-        // At midnight: generate the new day's tasks and mark yesterday's leftovers missed.
-        set(context, Day.millisAt(Day.today() + 1, 0), pending(context, ACTION_ROLLOVER, CODE_ROLLOVER))
+        // At midnight: generate the new day's tasks and mark yesterday's leftovers missed. Not exact:
+        // opening the app plans the day anyway, so a few minutes late costs nothing.
+        set(context, Day.millisAt(Day.today() + 1, 0), pending(context, ACTION_ROLLOVER, CODE_ROLLOVER), exact = false)
         // Bills due soon are checked every morning, whatever the routine setting.
-        set(context, nextAt(BILLS_MINUTES), pending(context, ACTION_BILLS, CODE_BILLS))
+        set(context, nextAt(BILLS_MINUTES), pending(context, ACTION_BILLS, CODE_BILLS), exact = false)
     }
 
     fun scheduleFocusEnd(context: Context, at: Long) = set(context, at, pending(context, ACTION_FOCUS_END, CODE_FOCUS_END))

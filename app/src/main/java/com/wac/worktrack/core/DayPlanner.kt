@@ -12,8 +12,11 @@ import com.wac.worktrack.health.HealthSync
 import com.wac.worktrack.notify.Alarms
 import com.wac.worktrack.notify.Notifs
 import com.wac.worktrack.widget.Widgets
+import androidx.room.withTransaction
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.time.YearMonth
 
 /**
@@ -25,22 +28,49 @@ object DayPlanner {
     /** If the app wasn't opened for a while, fill in at most this many past days. */
     private const val BACKFILL_DAYS = 14
 
-    private val mutex = Mutex()
+    /** Health Connect sync and badge checks are skipped if they ran this recently. */
+    private const val EXTRAS_INTERVAL_MILLIS = 15 * 60_000L
 
-    suspend fun ensure(context: Context, today: Long = Day.today()) = mutex.withLock {
+    private val mutex = Mutex()
+    private var extrasAt = 0L
+
+    /** True once [ensure] has already planned [today], i.e. calling it would only redo the cheap parts. */
+    fun planned(context: Context, today: Long = Day.today()) = Prefs(context).lastPlannedDay == today
+
+    /**
+     * Brings the day up to date. Generating tasks and marking missed ones only happen once per day;
+     * on later calls this just posts due recurring money, re-arms today's alarms, plus the Health
+     * Connect sync and badge check at most every [EXTRAS_INTERVAL_MILLIS] (or always if [force]).
+     */
+    suspend fun ensure(context: Context, today: Long = Day.today(), force: Boolean = false) = mutex.withLock {
+        // Callers include lifecycleScope (main thread); the badge and streak maths shouldn't run there.
+        withContext(Dispatchers.Default) { ensureLocked(context, today, force) }
+    }
+
+    private suspend fun ensureLocked(context: Context, today: Long, force: Boolean) {
         val db = context.db
         val prefs = Prefs(context)
         val last = prefs.lastPlannedDay
-        val from = if (last == 0L) today else maxOf(minOf(last + 1, today), today - BACKFILL_DAYS)
-        val templates = db.tasks().activeTemplates()
-        for (day in from..today) generate(context, templates, day)
-        db.tasks().markMissedBefore(today)
-        prefs.lastPlannedDay = today
+        val newDay = last != today
+        if (newDay) {
+            val from = if (last == 0L) today else maxOf(minOf(last + 1, today), today - BACKFILL_DAYS)
+            val templates = db.tasks().activeTemplates()
+            db.withTransaction {
+                for (day in from..today) generate(context, templates, day)
+                db.tasks().markMissedBefore(today)
+            }
+            prefs.lastPlannedDay = today
+        }
         postRecurring(context, today)
         db.tasks().tasksOn(today).forEach { Alarms.scheduleTask(context, it) }
-        runCatching { HealthSync.sync(context) }
-        runCatching { Badges.announceNew(context) }
-        Widgets.refresh(context)
+        val now = System.currentTimeMillis()
+        if (newDay || force || now - extrasAt >= EXTRAS_INTERVAL_MILLIS) {
+            extrasAt = now
+            runCatching { HealthSync.sync(context) }
+            runCatching { Badges.announceNew(context) }
+        }
+        // Every data change refreshes the widgets itself; only a new day needs it here.
+        if (newDay || force) Widgets.refresh(context)
     }
 
     /** Creates [day]'s tasks from templates; safe to call repeatedly (existing ones are kept). */
@@ -142,10 +172,12 @@ object DayPlanner {
 
     /** Applies "Auto-schedule" start times (see [AutoSchedule]). */
     suspend fun applyTimes(context: Context, tasks: List<DailyTask>, times: Map<Long, Int>) {
-        for (t in tasks) {
-            val at = times[t.id] ?: continue
-            saveTask(context, t.copy(timeMinutes = at))
+        val db = context.db
+        val moved = db.withTransaction {
+            tasks.mapNotNull { t -> times[t.id]?.let { t.copy(timeMinutes = it) } }.onEach { db.tasks().upsertTask(it) }
         }
+        moved.forEach { Alarms.scheduleTask(context, it) }
+        Widgets.refresh(context)
     }
 
     /** Returns false if [day] already has 3 priorities. */
@@ -161,6 +193,17 @@ object DayPlanner {
      * (so past scores stay honest) and a fresh copy is added.
      */
     suspend fun moveTo(context: Context, task: DailyTask, day: Long) {
+        move(context, task, day)
+        Widgets.refresh(context)
+    }
+
+    /** [moveTo] for several tasks at once, in one transaction and with one widget refresh. */
+    suspend fun moveAll(context: Context, tasks: List<DailyTask>, day: Long) {
+        context.db.withTransaction { tasks.forEach { move(context, it, day) } }
+        Widgets.refresh(context)
+    }
+
+    private suspend fun move(context: Context, task: DailyTask, day: Long) {
         val moved = task.copy(date = day, templateId = null, status = TaskStatus.PENDING, isTop3 = false, completedAt = null)
         // A missed/skipped task stays where it was, so the copy starts with no tracked time.
         if (task.status == TaskStatus.PENDING) {
@@ -171,7 +214,6 @@ object DayPlanner {
             val id = context.db.tasks().upsertTask(copy)
             Alarms.scheduleTask(context, copy.copy(id = id))
         }
-        Widgets.refresh(context)
     }
 
     private suspend fun refreshToday(context: Context) {
@@ -189,14 +231,17 @@ object DayPlanner {
             val dueDay = minOf(r.dayOfMonth, month.lengthOfMonth())
             if (date.dayOfMonth < dueDay || r.lastPostedMonth == month.toString()) continue
             val due = month.atDay(dueDay).toEpochDay()
-            finance.insertIgnore(
-                Txn(
-                    amountPaise = r.amountPaise, type = r.type, category = r.category, date = due,
-                    timeMillis = Day.millisAt(due, 9 * 60), note = r.title, method = "Bank",
-                    status = TxnStatus.PENDING, source = TxnSource.RECURRING,
+            // Together, so a crash in between can't post the same entry twice.
+            context.db.withTransaction {
+                finance.insertIgnore(
+                    Txn(
+                        amountPaise = r.amountPaise, type = r.type, category = r.category, date = due,
+                        timeMillis = Day.millisAt(due, 9 * 60), note = r.title, method = "Bank",
+                        status = TxnStatus.PENDING, source = TxnSource.RECURRING,
+                    )
                 )
-            )
-            finance.updateRecurring(r.copy(lastPostedMonth = month.toString()))
+                finance.updateRecurring(r.copy(lastPostedMonth = month.toString()))
+            }
             posted++
         }
         if (posted > 0) Notifs.pendingPayments(context, finance.pendingCountNow())

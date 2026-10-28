@@ -26,8 +26,10 @@ object Badges {
         val done = db.tasks().doneCount()
         val rest = db.care().restDatesNow(today - HISTORY_DAYS, today).toSet()
         val dayStreak = Scores.streaks(db.tasks().aggsNow(today - HISTORY_DAYS, today), today, rest).best
-        val logs = db.habits().logsNow(today - HISTORY_DAYS, today)
-        val habitBest = db.habits().allNow().maxOfOrNull { h -> Habits.streak(h, Habits.doneDays(h, logs), today, rest).best } ?: 0
+        val logs = db.habits().logsNow(today - HISTORY_DAYS, today).groupBy { it.habitId }
+        val habitBest = db.habits().allNow().maxOfOrNull { h ->
+            Habits.streak(h, Habits.doneDays(h, logs[h.id].orEmpty()), today, rest).best
+        } ?: 0
         val saved = db.finance().savedPerGoalNow().associate { it.goalId to it.totalPaise }
         val goalsDone = db.goals().allNow().count { g ->
             val value = if (g.type == GoalType.MONEY) saved[g.id] ?: 0 else g.current

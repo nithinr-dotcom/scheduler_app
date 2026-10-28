@@ -18,10 +18,12 @@ import com.wac.worktrack.core.Habits
 import com.wac.worktrack.core.db
 import com.wac.worktrack.data.TaskStatus
 import com.wac.worktrack.notify.launchAsync
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Keeps every home-screen widget in step with the data. Call after any change they show. */
 object Widgets {
-    suspend fun refresh(context: Context) {
+    suspend fun refresh(context: Context) = withContext(Dispatchers.Default) {
         TodayWidget.update(context)
         HabitsWidget.update(context)
         Top3Widget.update(context)
@@ -125,7 +127,7 @@ class WidgetActionReceiver : BroadcastReceiver() {
                     DayPlanner.setStatus(context, it, if (it.status == TaskStatus.DONE) TaskStatus.PENDING else TaskStatus.DONE)
                 }
             }
-            Widgets.refresh(context)
+            // HabitOps.tap and setStatus refresh the widgets themselves.
         }
     }
 

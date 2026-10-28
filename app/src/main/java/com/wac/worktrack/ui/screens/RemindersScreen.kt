@@ -73,7 +73,9 @@ fun RemindersScreen(nav: NavController) {
     val scope = rememberCoroutineScope()
     val undo = rememberUndo()
     val today = LocalToday.current
-    val reminders by remember { context.db.reminders().all() }.collectAsStateWithLifecycle(emptyList())
+    // null until the first query returns, so "nothing here" hints don't flash while loading.
+    val remindersOrNull by remember { context.db.reminders().all() }.collectAsStateWithLifecycle(null)
+    val reminders = remindersOrNull.orEmpty()
     val google = rememberGoogleItems(today, today + 6)
     val prefs = remember { Prefs(context) }
     val places by remember { context.db.life().places() }.collectAsStateWithLifecycle(emptyList())
@@ -127,7 +129,7 @@ fun RemindersScreen(nav: NavController) {
     ) { padding ->
         LazyColumn(contentPadding = padding) {
             item { SectionTitle("My reminders (app only)") }
-            if (reminders.isEmpty()) item { Hint("No reminders. Tap + to add one.") }
+            if (remindersOrNull?.isEmpty() == true) item { Hint("No reminders. Tap + to add one.") }
             items(reminders, key = { it.id }) { r ->
                 Row(
                     Modifier.fillMaxWidth().clickable { editing = r }.padding(horizontal = 16.dp, vertical = 8.dp),

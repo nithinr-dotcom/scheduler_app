@@ -26,6 +26,10 @@ import java.util.concurrent.TimeUnit
 object CloudBackup {
     private const val ROWS_PER_DOC = 400
 
+    /** Firestore allows 500 writes and 10 MiB per batch; stay under both. */
+    private const val BATCH_OPS = 450
+    private const val BATCH_BYTES = 8 * 1024 * 1024
+
     private fun userDoc(context: Context) =
         FirebaseFirestore.getInstance().collection("users")
             .document(Auth.user(context)?.uid ?: error("Not signed in"))
@@ -44,17 +48,39 @@ object CloudBackup {
         val oldChunks = (doc.get().await().get("chunks") as? Map<*, *>).orEmpty()
         val chunks = mutableMapOf<String, Int>()
         var rows = 0
+        // Batched writes: a few round trips instead of one per chunk. A batch is committed early
+        // before it reaches Firestore's operation or request-size limits.
+        val db = FirebaseFirestore.getInstance()
+        var batch = db.batch()
+        var ops = 0
+        var bytes = 0
+        suspend fun flushIfFull(nextBytes: Int) {
+            if (ops > 0 && (ops >= BATCH_OPS || bytes + nextBytes > BATCH_BYTES)) {
+                batch.commit().await()
+                batch = db.batch()
+                ops = 0
+                bytes = 0
+            }
+        }
         for ((table, all) in Snapshot.dump(context)) {
             rows += all.size
             val parts = all.chunked(ROWS_PER_DOC)
             chunks[table] = parts.size
             parts.forEachIndexed { i, part ->
-                doc.collection("tables").document("${table}_$i")
-                    .set(mapOf("table" to table, "chunk" to i, "json" to JSONArray(part).toString())).await()
+                val json = JSONArray(part).toString()
+                flushIfFull(json.length)
+                batch.set(doc.collection("tables").document("${table}_$i"), mapOf("table" to table, "chunk" to i, "json" to json))
+                ops++
+                bytes += json.length
             }
             val old = (oldChunks[table] as? Number)?.toInt() ?: 0
-            for (i in parts.size until old) doc.collection("tables").document("${table}_$i").delete().await()
+            for (i in parts.size until old) {
+                flushIfFull(0)
+                batch.delete(doc.collection("tables").document("${table}_$i"))
+                ops++
+            }
         }
+        if (ops > 0) batch.commit().await()
         doc.set(mapOf("chunks" to chunks, "updatedAt" to System.currentTimeMillis(), "schema" to Snapshot.FORMAT)).await()
         Prefs(context).lastBackupMillis = System.currentTimeMillis()
         rows
@@ -66,10 +92,12 @@ object CloudBackup {
     private suspend fun restoreNow(context: Context): Int = withContext(Dispatchers.IO) {
         val doc = userDoc(context)
         val chunks = doc.get().await().get("chunks") as? Map<*, *> ?: return@withContext -1
+        // One query for every chunk instead of one read each.
+        val docs = doc.collection("tables").get().await().documents.associateBy { it.id }
         val data = Snapshot.TABLES.associateWith { table ->
             val n = (chunks[table] as? Number)?.toInt() ?: 0
             (0 until n).flatMap { i ->
-                val json = doc.collection("tables").document("${table}_$i").get().await().getString("json") ?: "[]"
+                val json = docs["${table}_$i"]?.getString("json") ?: "[]"
                 val arr = JSONArray(json)
                 List(arr.length()) { arr.getJSONObject(it) }
             }

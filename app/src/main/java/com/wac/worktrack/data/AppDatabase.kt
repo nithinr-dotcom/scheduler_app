@@ -15,7 +15,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         InboxItem::class, Place::class, LearningItem::class, Debt::class, Asset::class, NetWorthSnapshot::class,
         Medicine::class, MedLog::class, ImportantDate::class, RestDay::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -77,12 +77,22 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v4: indexes for the capture duplicate check (transactions.timeMillis) and dose history (med_logs.date). */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                listOf(
+                    "CREATE INDEX IF NOT EXISTS `index_transactions_timeMillis` ON `transactions` (`timeMillis`)",
+                    "CREATE INDEX IF NOT EXISTS `index_med_logs_date` ON `med_logs` (`date`)",
+                ).forEach(db::execSQL)
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
         fun get(context: Context): AppDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, NAME)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
                 .also { instance = it }
         }

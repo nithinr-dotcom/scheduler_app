@@ -24,7 +24,10 @@ android {
 
     buildTypes {
         getByName("release") {
-            isMinifyEnabled = false
+            // R8 strips unused code (most of material-icons-extended) and unused resources.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
@@ -45,6 +48,8 @@ ksp {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.17.0")
+    // Installs the Compose libraries' baseline profiles, so cold start isn't run interpreted.
+    implementation("androidx.profileinstaller:profileinstaller:1.4.0")
 
     // Compose UI
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))

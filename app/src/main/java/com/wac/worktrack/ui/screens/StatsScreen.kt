@@ -24,6 +24,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.material3.TextButton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,7 +64,7 @@ fun StatsScreen(nav: NavController) {
     val month = Day.monthRange(today)
     val week = Day.weekStart(today)
 
-    val aggs by remember(today) { db.tasks().aggs(today - 400, today) }.collectAsStateWithLifecycle(emptyList())
+    val aggs by remember(today) { db.tasks().aggs(today - 400, today).distinctUntilChanged() }.collectAsStateWithLifecycle(emptyList())
     val habits by remember { db.habits().active() }.collectAsStateWithLifecycle(emptyList())
     val weekLogs by remember(week) { db.habits().logs(week, week + 6) }.collectAsStateWithLifecycle(emptyList())
     val goals by remember { db.goals().active() }.collectAsStateWithLifecycle(emptyList())

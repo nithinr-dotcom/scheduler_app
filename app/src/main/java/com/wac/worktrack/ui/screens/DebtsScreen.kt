@@ -68,7 +68,9 @@ fun DebtsScreen(nav: NavController) {
     val undo = rememberUndo()
     val today = LocalToday.current
     val finance = context.db.finance()
-    val debts by remember { finance.debts() }.collectAsStateWithLifecycle(emptyList())
+    // null until the first query returns, so "nothing here" hints don't flash while loading.
+    val debtsOrNull by remember { finance.debts() }.collectAsStateWithLifecycle(null)
+    val debts = debtsOrNull.orEmpty()
     var editing by remember { mutableStateOf<Debt?>(null) }
     var repaying by remember { mutableStateOf<Debt?>(null) }
 
@@ -93,7 +95,7 @@ fun DebtsScreen(nav: NavController) {
                     }
                 }
             }
-            if (debts.isEmpty()) item { Hint("Lent a friend ₹500? Borrowed for a trip? Track it here so nothing is forgotten.") }
+            if (debtsOrNull?.isEmpty() == true) item { Hint("Lent a friend ₹500? Borrowed for a trip? Track it here so nothing is forgotten.") }
             listOf(open to "Open", debts.filter { it.outstanding == 0L } to "Settled").forEach { (group, title) ->
                 if (group.isNotEmpty()) {
                     item { SectionTitle(title) }

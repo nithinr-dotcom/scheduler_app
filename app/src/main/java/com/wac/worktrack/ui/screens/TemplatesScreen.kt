@@ -79,7 +79,9 @@ fun TemplatesScreen(nav: NavController) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val undo = rememberUndo()
-    val templates by remember { context.db.tasks().templates() }.collectAsStateWithLifecycle(emptyList())
+    // null until the first query returns, so "nothing here" hints don't flash while loading.
+    val templatesOrNull by remember { context.db.tasks().templates() }.collectAsStateWithLifecycle(null)
+    val templates = templatesOrNull.orEmpty()
     val goals by remember { context.db.goals().active() }.collectAsStateWithLifecycle(emptyList())
     val today = LocalToday.current
     var editing by remember { mutableStateOf<TaskTemplate?>(null) }
@@ -98,7 +100,7 @@ fun TemplatesScreen(nav: NavController) {
         },
     ) { padding ->
         LazyColumn(contentPadding = padding) {
-            if (templates.isEmpty()) {
+            if (templatesOrNull?.isEmpty() == true) {
                 item {
                     Hint(
                         "Add the things you want to do regularly — e.g. \"Workout\" every day, \"Weekly planning\" " +

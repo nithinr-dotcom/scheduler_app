@@ -26,11 +26,14 @@ object Snapshot {
     )
 
     /** Bumped when the database version changes; older backups are still accepted. */
-    const val FORMAT = 3
+    const val FORMAT = 4
 
     fun dump(context: Context): Map<String, List<JSONObject>> {
         val sql = context.db.openHelper.readableDatabase
-        return TABLES.associateWith { table -> sql.query("SELECT * FROM $table").use { it.toJsonRows() } }
+        // One transaction, so a write landing mid-dump can't leave the backup half old, half new.
+        return context.db.runInTransaction<Map<String, List<JSONObject>>> {
+            TABLES.associateWith { table -> sql.query("SELECT * FROM $table").use { it.toJsonRows() } }
+        }
     }
 
     /**

@@ -37,6 +37,7 @@ import androidx.lifecycle.lifecycleScope
 import com.wac.worktrack.core.Day
 import com.wac.worktrack.core.DayPlanner
 import com.wac.worktrack.core.Prefs
+import com.wac.worktrack.notify.Alarms
 import com.wac.worktrack.notify.Geofences
 import com.wac.worktrack.ui.AppLock
 import com.wac.worktrack.ui.AppRoot
@@ -165,8 +166,14 @@ class MainActivity : FragmentActivity() {
         resumeTick++
         lifecycleScope.launch {
             DayPlanner.ensure(this@MainActivity)
-            // Switching location off drops every geofence; put location reminders back.
-            Geofences.sync(this@MainActivity)
+            if (!rescheduledThisProcess) {
+                // A force-stop wipes every alarm and only opening the app recovers from it.
+                rescheduledThisProcess = true
+                Alarms.rescheduleAll(this@MainActivity)
+            } else {
+                // Switching location off drops every geofence; put location reminders back.
+                Geofences.sync(this@MainActivity, force = false)
+            }
         }
     }
 
@@ -180,6 +187,7 @@ class MainActivity : FragmentActivity() {
 
     companion object {
         const val EXTRA_ROUTE = "route"
+        private var rescheduledThisProcess = false
         private const val STATE_LOCKED = "locked"
         private const val STATE_BACKGROUNDED_AT = "backgroundedAt"
     }

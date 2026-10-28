@@ -127,8 +127,12 @@ fun FinanceScreen(nav: NavController, initialTab: Int) {
     var anchor by remember { mutableLongStateOf(today) } // any day inside the shown month
     val month = Day.monthRange(anchor)
 
-    val accepted by remember(month) { finance.accepted(month.first, month.last) }.collectAsStateWithLifecycle(emptyList())
-    val pending by remember { finance.pending() }.collectAsStateWithLifecycle(emptyList())
+    // Lists are null until their first query returns; a tab waits for its data, so its
+    // "nothing here" hint doesn't flash while loading.
+    val acceptedOrNull by remember(month) { finance.accepted(month.first, month.last) }.collectAsStateWithLifecycle(null)
+    val accepted = acceptedOrNull.orEmpty()
+    val pendingOrNull by remember { finance.pending() }.collectAsStateWithLifecycle(null)
+    val pending = pendingOrNull.orEmpty()
     val rejected by remember { finance.rejected() }.collectAsStateWithLifecycle(emptyList())
     val twins by produceState(emptyMap<Long, String>(), pending) {
         value = withContext(Dispatchers.IO) { pending.mapNotNull { t -> Capture.recordedTwin(context, t)?.let { t.id to it } }.toMap() }
@@ -139,7 +143,8 @@ fun FinanceScreen(nav: NavController, initialTab: Int) {
     val savedPerGoal by remember { finance.savedPerGoal() }.collectAsStateWithLifecycle(emptyList())
     val monthlyCost by produceState(0L, today, accepted) { value = withContext(Dispatchers.IO) { MoneyOps.monthlyLivingCost(context, today) } }
     val budgets by remember { finance.budgets() }.collectAsStateWithLifecycle(emptyList())
-    val recurring by remember { finance.recurring() }.collectAsStateWithLifecycle(emptyList())
+    val recurringOrNull by remember { finance.recurring() }.collectAsStateWithLifecycle(null)
+    val recurring = recurringOrNull.orEmpty()
     val goals by remember { context.db.goals().active() }.collectAsStateWithLifecycle(emptyList())
     val moneyGoals = goals.filter { it.type == GoalType.MONEY }
 
@@ -256,10 +261,10 @@ fun FinanceScreen(nav: NavController, initialTab: Int) {
                                 }
                             },
                         )
-                        overview(accepted, budgets, pending.size, forecast) { tab = 2 }
+                        if (acceptedOrNull != null) overview(accepted, budgets, pending.size, forecast) { tab = 2 }
                     }
-                    1 -> transactions(accepted, today) { editingTxn = it }
-                    2 -> pendingInbox(
+                    1 -> if (acceptedOrNull != null) transactions(accepted, today) { editingTxn = it }
+                    2 -> if (pendingOrNull != null) pendingInbox(
                         pending, today,
                         onAccept = { scope.launch { Capture.accept(context, it) } },
                         onReject = { t ->
@@ -276,7 +281,7 @@ fun FinanceScreen(nav: NavController, initialTab: Int) {
                         onRestore = { scope.launch { Capture.restore(context, it) } },
                     )
                     3 -> budgetList(budgets, accepted) { editingBudget = it }
-                    4 -> recurringList(recurring) { editingRecurring = it }
+                    4 -> if (recurringOrNull != null) recurringList(recurring) { editingRecurring = it }
                 }
                 item { Spacer(Modifier.height(88.dp)) }
             }
