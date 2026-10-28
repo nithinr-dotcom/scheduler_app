@@ -12,9 +12,9 @@ captures/
 .cxx/
 .externalNativeBuild/
 
-# Server
-server/node_modules/
-server/uploads/
+# Firebase config for your own project (keep it out of the repo)
+app/google-services.json
+firebase-debug.log
 
 # OS
 .DS_Store

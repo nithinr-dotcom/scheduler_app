@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">WorkTrack</string>
-    <string name="tab_reminders">Reminders</string>
-    <string name="tab_files">Files</string>
-    <string name="tab_monitor">Monitor</string>
-    <string name="tab_gallery">Gallery</string>
+    <string name="widget_description">Today\'s score, streak and next task</string>
+    <string name="widget_habits_description">Check in your habits from the home screen</string>
+    <string name="widget_top3_description">Today\'s Top 3 priorities — tap to complete</string>
+    <string name="quick_add_tile">Quick add</string>
 </resources>
